@@ -1,0 +1,164 @@
+#FINAL ASSIGNMENT
+
+MUHAMMAD MIFTAHUL AMIN SUMARNO - GG3DAGP0203
+
+--SQL COMPONENT-- 
+-- QUESTIONS -- 
+
+/* answering Question 1 */
+#1. List all the questions and its answers for any questions related to Python programming language in 2020.
+
+SELECT 
+       q.id as question_id,
+       q.title as question,
+       q.body as question_body,
+       a.id as answer_id,
+       a.body as answer,
+       EXTRACT(year from q.creation_date) as year
+FROM `bigquery-public-data.stackoverflow.posts_questions` q
+JOIN `bigquery-public-data.stackoverflow.posts_answers` a 
+ON q.accepted_answer_id = a.id
+WHERE REGEXP_CONTAINS(q.title, "Python") 
+  AND REGEXP_CONTAINS(q.body, "Python") 
+  AND EXTRACT(YEAR FROM q.creation_date) = 2020 ;
+
+/* answering Question 2 */
+#2. How many questions do all Indonesian people create per year starting from 2015 to 2020?
+
+WITH t2 as (
+SELECT COUNT(q.owner_user_id) as total_counts,
+       q.title,
+       u.location,
+      EXTRACT(YEAR from q.creation_date) as year
+FROM `bigquery-public-data.stackoverflow.posts_questions` q
+JOIN `bigquery-public-data.stackoverflow.users` u 
+ON q.owner_user_id = u.id
+WHERE REGEXP_CONTAINS(u.location, "Indonesia") 
+  AND EXTRACT(YEAR from q.creation_date) BETWEEN 2015 AND 2020
+GROUP BY q.title, 
+         u.location, 
+        year
+)
+
+SELECT SUM(t2.total_counts) as total_questions_by_indonesian_people,
+FROM t2 ;
+
+
+/* answering Question 3 */
+#3. which usernames that got badges in Jan 2020? please create unique ranking based on when they got the badge per class
+
+WITH t2_rank_badges AS (
+  SELECT 
+         u.display_name AS username,
+         b.name,
+         b.class,
+         EXTRACT(DATE FROM b.date) AS date,
+         DENSE_RANK() OVER (PARTITION BY b.class, EXTRACT(DATE FROM b.date) ORDER BY b.date) AS ranking
+  FROM `bigquery-public-data.stackoverflow.users` u
+  JOIN `bigquery-public-data.stackoverflow.badges` b
+  ON b.user_id = u.id
+  WHERE EXTRACT(DATE FROM b.date) BETWEEN '2020-01-01' AND '2020-01-31'
+)
+SELECT username, name, class, date, ranking
+FROM t2_rank_badges
+ORDER BY class, 
+         date, 
+        ranking ;
+
+
+/* answering Question 4 */
+#4 on which year do questions that are related to bigquery get more answers? please create unique ranking to know the trend.
+
+WITH t1 as (
+  SELECT 
+        q.id as question_id,
+        q.title,
+        q.body,
+        EXTRACT(YEAR FROM q.creation_date) AS YEAR,
+        COUNT(a.id) as total_answer
+FROM bigquery-public-data.stackoverflow.posts_questions q
+JOIN bigquery-public-data.stackoverflow.posts_answers a
+ON q.accepted_answer_id = a.id
+WHERE REGEXP_CONTAINS(q.title, "Bigquery") OR REGEXP_CONTAINS (q.body, "Bigquery")
+GROUP BY question_id,q.title,
+         q.body,
+         YEAR
+
+)
+SELECT
+  year,
+  SUM(total_answer) AS total_answer_count,
+  DENSE_RANK() OVER (ORDER BY SUM(total_answer) DESC) AS ranking
+FROM t1
+GROUP BY year
+ORDER BY ranking ASC ;
+
+
+/* answering Question 5 */
+#5 for people who have answers at least 5000 answers, what is the average time span in hours do each of them spend answering questions? 
+  #time span = time difference between answering one question to other question; for timespan calculation you can use this method
+
+WITH user_answers AS (
+  SELECT
+    a.owner_user_id AS user_id,
+    a.creation_date AS answer_creation_date,
+    LAG(a.creation_date) OVER(PARTITION BY a.owner_user_id ORDER BY a.creation_date) AS prev_answer_creation_date
+FROM `bigquery-public-data.stackoverflow.posts_answers` AS a
+)
+SELECT
+  u.id AS user_id,
+  u.display_name,
+  AVG(TIMESTAMP_DIFF(answer_creation_date, prev_answer_creation_date, MILLISECOND) / 3600000.0) AS avg_time_span_hours
+FROM `bigquery-public-data.stackoverflow.users` AS u
+  JOIN user_answers AS ua
+  ON u.id = ua.user_id
+GROUP BY
+  user_id,u.
+  display_name
+HAVING
+  COUNT (ua.answer_creation_date) >= 5000
+ORDER BY avg_time_span_hours DESC
+
+/* answering Question 6 */
+#6.please list top 10 location where users are most located
+    #ps. exclude people who dont list their location
+
+SELECT COUNT(id) as total_id_counts,
+              location
+FROM `bigquery-public-data.stackoverflow.users` u
+WHERE location IS NOT NULL
+GROUP BY location
+ORDER BY total_id_counts DESC
+LIMIT 10 ;
+
+/* answering Question 7 */
+#7.management wants to know number of questions a person might create based on their number of active years. 
+  #your manager requests you to give these distributions: percentile 10, 25, 75, 95 and median.
+
+WITH User_Activity AS (
+  SELECT
+        u.id AS user_id,
+        EXTRACT(YEAR FROM CURRENT_DATE()) - EXTRACT(YEAR FROM u.creation_date) + 1 AS active_years,
+        COUNT(DISTINCT q.id) AS question_count
+  FROM `bigquery-public-data.stackoverflow.posts_questions` q
+  JOIN `bigquery-public-data.stackoverflow.users` u 
+  ON q.owner_user_id = u.id
+  WHERE q.creation_date >= u.creation_date
+  GROUP BY
+      user_id, 
+      active_years
+  ORDER BY question_count DESC
+)
+
+SELECT
+    active_years,
+    APPROX_QUANTILES(question_count, 100)[OFFSET(10)] AS percentile_10,
+    APPROX_QUANTILES(question_count, 100)[OFFSET(25)] AS percentile_25,
+    APPROX_QUANTILES(question_count, 100)[OFFSET(75)] AS percentile_75,
+    APPROX_QUANTILES(question_count, 100)[OFFSET(95)] AS percentile_95,
+    APPROX_QUANTILES(question_count, 100)[OFFSET(50)] AS median
+FROM User_Activity
+GROUP BY active_years
+ORDER BY active_years;
+
+-- END --
