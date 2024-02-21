@@ -3,6 +3,8 @@
 --SQL COMPONENT-- 
 -- QUESTIONS -- 
 
+Given Stackoverflow website dataset question (user, answer, question, country, timestamp)
+
 /* answering Question 1 */
 #1. List all the questions and its answers for any questions related to Python programming language in 2020.
 
